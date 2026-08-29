@@ -4,8 +4,9 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/Sed-Miyuki/OmniRoute/services/api-gateway/grpc_clients"
 	"github.com/Sed-Miyuki/OmniRoute/shared/contracts"
-	"github.com/Sed-Miyuki/OmniRoute/shared/util"
+	"github.com/Sed-Miyuki/OmniRoute/shared/proto/driver"
 	"github.com/gorilla/websocket"
 )
 
@@ -61,27 +62,40 @@ func handleDriversWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type Driver struct {
-		Id             string `json:"id"`
-		Name           string `json:"name"`
-		ProfilePicture string `json:"profilePicture"`
-		CarPlate       string `json:"carPlate"`
-		PackageSlug    string `json:"packageSlug"`
+	ctx := r.Context()
+
+	driverService, err := grpc_clients.NewDriverServiceClient()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	msg:=contracts.WSMessage{
-		Type: "driver.cmd.register",
-		Data: Driver{
-			Id: userID,
-			Name: "Von",
-			ProfilePicture: util.GetRandomAvatar(1),
-			CarPlate: "ABC123",
+	defer func() {
+		driverService.Client.UnRegisterDriver(ctx, &driver.RegisterDriverRequest{
+			DriverID:    userID,
 			PackageSlug: packageSlug,
-		},
+		})
+
+		driverService.Close()
+
+		log.Println("Driver unregistered: ", userID)
+	}()
+
+	driverData, err := driverService.Client.RegisterDriver(ctx, &driver.RegisterDriverRequest{
+		DriverID:    userID,
+		PackageSlug: packageSlug,
+	})
+	if err != nil {
+		log.Printf("Error registering driver: %v", err)
+		return
 	}
 
-	if err:=conn.WriteJSON(msg);err!=nil{
-		log.Printf("error sending message: %v",err)
+	msg := contracts.WSMessage{
+		Type: "driver.cmd.register",
+		Data: driverData,
+	}
+
+	if err := conn.WriteJSON(msg); err != nil {
+		log.Printf("error sending message: %v", err)
 		return
 	}
 

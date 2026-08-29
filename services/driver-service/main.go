@@ -12,22 +12,18 @@ import (
 
 	"time"
 
-	// h "github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/http"
-	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/grpc"
-	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/repository"
-	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/service"
+	// h "github.com/Sed-Miyuki/OmniRoute/services/Driver-service/internal/infrastructure/http"
 	"github.com/Sed-Miyuki/OmniRoute/shared/env"
 	"github.com/Sed-Miyuki/OmniRoute/shared/messaging"
 
 	grpcserver "google.golang.org/grpc"
 )
 
-var GrpcAddr = ":9093"
+var GrpcAddr = ":9092"
 
 func main() {
+
 	rabbitMqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
-	inmemRepo := repository.NewInmemRepository()
-	svc := service.NewService(inmemRepo)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -44,6 +40,8 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	service := NewService()
+
 	rabbitmq, err := messaging.NewRabbitMQ(rabbitMqURI)
 	if err != nil {
 		log.Fatal(err)
@@ -55,10 +53,9 @@ func main() {
 
 	//starting the gRPC server
 	grpcServer := grpcserver.NewServer()
+	NewGrpcHandler(grpcServer, service)
 
-	grpc.NewGRPCHandler(grpcServer, svc)
-
-	log.Printf("Starting grpc Trip service on port %s", lis.Addr().String())
+	log.Printf("Starting grpc Driver service on port %s", lis.Addr().String())
 
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
@@ -88,7 +85,7 @@ func main() {
 	// mux := http.NewServeMux()
 	// httphandler := h.HttpHandler{Service: svc}
 
-	// mux.HandleFunc("POST /preview", httphandler.HandleTripPreview)
+	// mux.HandleFunc("POST /preview", httphandler.HandleDriverPreview)
 
 	// server := &http.Server{
 	// 	Addr:    ":8083",
