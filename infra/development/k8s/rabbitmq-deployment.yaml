@@ -1,8 +1,9 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: rabbitmq
 spec:
+  serviceName: "rabbitmq"
   replicas: 1
   selector:
     matchLabels:
@@ -16,45 +17,73 @@ spec:
         - name: rabbitmq
           image: rabbitmq:3-management
           ports:
-            - containerPort: 5672 #AMQP Port
-            - containerPort: 15672 #Management UI Port
+            - containerPort: 5672 
+            - containerPort: 15672 
+          
+          # 1. Add Startup Probe to handle slow initial boots
+          startupProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "check_running"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 20
+            failureThreshold: 15 # Gives RabbitMQ up to ~3 minutes to boot before failing
+            
+          # 2. Simplify Readiness and Liveness now that Startup Probe protects them
           readinessProbe:
             exec:
               command: ["rabbitmq-diagnostics", "check_running"]
-            initialDelaySeconds: 20
+            initialDelaySeconds: 5
             periodSeconds: 10
-            timeoutSeconds: 5
+            timeoutSeconds: 20
             failureThreshold: 3
           livenessProbe:
             exec:
               command: ["rabbitmq-diagnostics", "check_running"]
-            initialDelaySeconds: 60
+            initialDelaySeconds: 5
             periodSeconds: 30
-            timeoutSeconds: 15
+            timeoutSeconds: 20
+            failureThreshold: 3
+
+          # 3. Give it room to breathe!
           resources:
             requests:
               memory: "512Mi"
-              cpu: "250m"
+              cpu: "500m" # Increased base CPU
             limits:
-              memory: "512Mi"
-              cpu: "250m"
+              memory: "1Gi" # Bumped memory limit slightly for safety
+              cpu: "1000m"  # Unchoke the Erlang CLI commands
           env:
             - name: RABBITMQ_DEFAULT_USER
               valueFrom:
                 secretKeyRef:
                   name: rabbitmq-credentials
                   key: username
-            - name: RABBITMQ_URI
+            - name: RABBITMQ_DEFAULT_PASS
               valueFrom:
                 secretKeyRef:
                   name: rabbitmq-credentials
-                  key: uri
+                  key: password
+            - name: RABBITMQ_MNESIA_BASE
+              value: /var/lib/rabbitmq/mnesia
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+  volumeClaimTemplates:
+  - metadata:
+      name: rabbitmq-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: rabbitmq
 spec:
+  clusterIP: None
   selector:
     app: rabbitmq
   ports:
@@ -64,4 +93,3 @@ spec:
     - name: management
       port: 15672
       targetPort: 15672
-  type: ClusterIP

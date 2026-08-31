@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/domain"
+	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/events"
 	pb "github.com/Sed-Miyuki/OmniRoute/shared/proto/trip"
 	"github.com/Sed-Miyuki/OmniRoute/shared/types"
 	"google.golang.org/grpc"
@@ -15,11 +16,13 @@ import (
 type gRPCHandler struct{
 	pb.UnimplementedTripServiceServer
 	service domain.TripService
+	publisher *events.TripEventPublisher
 }
 
-func NewGRPCHandler(server *grpc.Server, service domain.TripService) *gRPCHandler{
+func NewGRPCHandler(server *grpc.Server, service domain.TripService, publisher *events.TripEventPublisher) *gRPCHandler{
 	handler:=&gRPCHandler{
 		service: service,
+		publisher: publisher,
 	}
 
 	pb.RegisterTripServiceServer(server, handler)
@@ -68,6 +71,9 @@ func (h *gRPCHandler) CreateTrip(ctx context.Context,req *pb.CreateTripRequest) 
 	trip,err:=h.service.CreateTrip(ctx,rideFare)
 	if err!=nil{
 		return nil,status.Errorf(codes.Internal,"failed to create the trip: %v",err)
+	}
+	if err := h.publisher.PublishTripCreated(ctx,trip); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to publish the trip created event: %v", err)
 	}
 	return &pb.CreateTripResponse{
 		TripID: trip.ID.Hex(),

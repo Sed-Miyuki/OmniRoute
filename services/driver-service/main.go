@@ -42,10 +42,10 @@ func main() {
 
 	service := NewService()
 
+	// RabbitMQ connection
 	rabbitmq, err := messaging.NewRabbitMQ(rabbitMqURI)
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
 	defer rabbitmq.Close()
 
@@ -54,6 +54,13 @@ func main() {
 	//starting the gRPC server
 	grpcServer := grpcserver.NewServer()
 	NewGrpcHandler(grpcServer, service)
+
+	consumer:=NewTripConsumer(rabbitmq,service)
+	go func ()  {
+		if err:=consumer.Listen();err!=nil{
+			log.Fatalf("Failed to listen to the message: %v",err)
+		}
+	}()
 
 	log.Printf("Starting grpc Driver service on port %s", lis.Addr().String())
 

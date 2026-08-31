@@ -13,6 +13,7 @@ import (
 	"time"
 
 	// h "github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/http"
+	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/events"
 	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/grpc"
 	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/repository"
 	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/service"
@@ -44,19 +45,21 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	// RabbitMQ connection
 	rabbitmq, err := messaging.NewRabbitMQ(rabbitMqURI)
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
 	defer rabbitmq.Close()
 
 	log.Println("Starting RabbitMQ connection")
 
+	publisher := events.NewTripEventPublisher(rabbitmq)
+
 	//starting the gRPC server
 	grpcServer := grpcserver.NewServer()
 
-	grpc.NewGRPCHandler(grpcServer, svc)
+	grpc.NewGRPCHandler(grpcServer, svc, publisher)
 
 	log.Printf("Starting grpc Trip service on port %s", lis.Addr().String())
 
