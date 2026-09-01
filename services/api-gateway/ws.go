@@ -1,23 +1,22 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
 	"github.com/Sed-Miyuki/OmniRoute/services/api-gateway/grpc_clients"
 	"github.com/Sed-Miyuki/OmniRoute/shared/contracts"
+	"github.com/Sed-Miyuki/OmniRoute/shared/messaging"
 	"github.com/Sed-Miyuki/OmniRoute/shared/proto/driver"
-	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
-
-func handleRidersWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+var (
+	connManager = messaging.NewConnectionManager()
+)
+ 
+func handleRidersWebSocket(w http.ResponseWriter, r *http.Request,rb *messaging.RabbitMQ) {
+	conn, err := connManager.Upgrade(w, r)
 	if err != nil {
 		log.Printf("Web socket upgrade failed: %v", err)
 		return
@@ -29,6 +28,22 @@ func handleRidersWebSocket(w http.ResponseWriter, r *http.Request) {
 	if userID == "" {
 		log.Printf("No User id provided")
 		return
+	}
+
+	connManager.Add(userID, conn)
+	defer connManager.Remove(userID)
+
+	queues:=[]string{
+		messaging.DriverCmdTripRequestQueue,
+		messaging.NotifyDriverAssignQueue,
+	}
+
+	for _,q:=range queues{
+		consumer:=messaging.NewQueueConsumer(rb,connManager,q)
+
+		if err:=consumer.Start();err!=nil{
+			log.Printf("failed to start consumer for queue: %s: err: %v",q,err)
+		}
 	}
 
 	for {
@@ -41,8 +56,8 @@ func handleRidersWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleDriversWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+func handleDriversWebSocket(w http.ResponseWriter, r *http.Request,rb *messaging.RabbitMQ) {
+	conn, err := connManager.Upgrade(w, r)
 	if err != nil {
 		log.Printf("Web socket upgrade failed: %v", err)
 		return
@@ -55,6 +70,8 @@ func handleDriversWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Printf("No User id provided")
 		return
 	}
+
+	connManager.Add(userID, conn)
 
 	packageSlug := r.URL.Query().Get("packageSlug")
 	if packageSlug == "" {
@@ -70,6 +87,7 @@ func handleDriversWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func() {
+		connManager.Remove(userID)
 		driverService.Client.UnRegisterDriver(ctx, &driver.RegisterDriverRequest{
 			DriverID:    userID,
 			PackageSlug: packageSlug,
@@ -89,14 +107,24 @@ func handleDriversWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg := contracts.WSMessage{
-		Type: "driver.cmd.register",
-		Data: driverData,
-	}
-
-	if err := conn.WriteJSON(msg); err != nil {
+	if err := connManager.SendMessage(userID, contracts.WSMessage{
+		Type: contracts.DriverCmdRegister,
+		Data: driverData.Driver,
+	}); err != nil {
 		log.Printf("error sending message: %v", err)
 		return
+	}
+
+	queues:=[]string{
+		messaging.DriverCmdTripRequestQueue,
+	}
+
+	for _,q:=range queues{
+		consumer:=messaging.NewQueueConsumer(rb,connManager,q)
+
+		if err:=consumer.Start();err!=nil{
+			log.Printf("failed to start consumer for queue: %s: err: %v",q,err)
+		}
 	}
 
 	for {
@@ -105,6 +133,32 @@ func handleDriversWebSocket(w http.ResponseWriter, r *http.Request) {
 			log.Printf("error reading message: %v", err)
 			break
 		}
-		log.Printf("received message: %s", message)
+
+		type driverMessage struct{
+			Type string `json:"type"`
+			Data json.RawMessage `json:"data"`
+		}
+
+		var driverMSG driverMessage
+
+		if err:=json.Unmarshal(message,&driverMSG);err!=nil{
+			log.Printf("error unmarshalling messages: %v",err)
+			return
+		}
+
+		switch driverMSG.Type{
+		case contracts.DriverCmdLocation:
+			//maybe in future???
+			continue
+		case contracts.DriverCmdTripAccept,contracts.DriverCmdTripDecline:
+			if err:=rb.PublishMessage(ctx,driverMSG.Type,contracts.AmqpMessage{
+				OwnerID: userID,
+				Data: driverMSG.Data,
+			});err!=nil{
+				log.Printf("Error publishing message to RabbitMQ: %v",err)
+			}
+		default:
+			log.Printf("Unknown message Type: %s",driverMSG.Type)
+		}
 	}
 }

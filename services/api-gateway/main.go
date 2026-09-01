@@ -10,11 +10,12 @@ import (
 	"time"
 
 	"github.com/Sed-Miyuki/OmniRoute/shared/env"
+	"github.com/Sed-Miyuki/OmniRoute/shared/messaging"
 )
-
 
 var (
 	httpAddr = env.GetString("HTTP_ADDR", ":8081")
+	rabbitMqURI = env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
 )
 
 func main() {
@@ -22,35 +23,47 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /trip/preview", enableCORS(handleTripPreview))
-	mux.HandleFunc("POST /trip/start",enableCORS(handleTripStart))
-	mux.HandleFunc("/ws/drivers",handleDriversWebSocket)
-	mux.HandleFunc("/ws/riders",handleRidersWebSocket)
+	// RabbitMQ connection
+	rabbitmq, err := messaging.NewRabbitMQ(rabbitMqURI)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rabbitmq.Close()
 
+	log.Println("Starting RabbitMQ connection")
+
+	mux.HandleFunc("POST /trip/preview", enableCORS(handleTripPreview))
+	mux.HandleFunc("POST /trip/start", enableCORS(handleTripStart))
+	mux.HandleFunc("/ws/drivers", func(w http.ResponseWriter, r *http.Request) {
+		handleDriversWebSocket(w,r,rabbitmq)
+	})
+	mux.HandleFunc("/ws/riders", func(w http.ResponseWriter, r *http.Request) {
+		handleRidersWebSocket(w,r,rabbitmq)
+	})
 	server := &http.Server{
 		Addr:    httpAddr,
 		Handler: mux,
 	}
 
-	serverErrors:=make(chan error,1)
-	go func ()  {
-		log.Printf("Server listening on: %s",httpAddr)
-		serverErrors<-server.ListenAndServe()
+	serverErrors := make(chan error, 1)
+	go func() {
+		log.Printf("Server listening on: %s", httpAddr)
+		serverErrors <- server.ListenAndServe()
 	}()
 
-	shutdown:=make(chan os.Signal,1)
-	signal.Notify(shutdown,os.Interrupt,syscall.SIGTERM)
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
-	select{
-	case err:=<-serverErrors:
-		log.Printf("error starting the server: %v",err)
-	case sig:=<-shutdown:
-		log.Printf("Server is shuting down due to %v signal",sig)
-		ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second)
+	select {
+	case err := <-serverErrors:
+		log.Printf("error starting the server: %v", err)
+	case sig := <-shutdown:
+		log.Printf("Server is shuting down due to %v signal", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err:=server.Shutdown(ctx);err!=nil{
-			log.Printf("Could not stop the server gracefully: %v",err)
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("Could not stop the server gracefully: %v", err)
 			server.Close()
 		}
 	}

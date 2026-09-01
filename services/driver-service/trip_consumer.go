@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math/rand"
 
 	"github.com/Sed-Miyuki/OmniRoute/shared/contracts"
 	"github.com/Sed-Miyuki/OmniRoute/shared/messaging"
@@ -38,7 +39,7 @@ func (c *tripConsumer) Listen() error {
 		log.Printf("driver received message: %+v",msg)
 
 		switch msg.RoutingKey{
-		case contracts.TripEventCreated:
+		case contracts.TripEventCreated,contracts.TripEventDriverNotInterested:
 			return c.handleFindAndNotifyDrivers(ctx,payload)
 		}
 
@@ -60,7 +61,8 @@ func (c *tripConsumer) handleFindAndNotifyDrivers(ctx context.Context,payload me
 		return nil
 	}
 
-	suitableDriverID:=suitableIDs[0]
+	randomIndex:=rand.Intn(len(suitableIDs))
+	suitableDriverID:=suitableIDs[randomIndex]
 	marshalledEvent,err:=json.Marshal(payload)
 	if err!=nil{
 		return err
