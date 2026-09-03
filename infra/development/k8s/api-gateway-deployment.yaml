@@ -36,6 +36,11 @@ spec:
                 secretKeyRef:
                   name: rabbitmq-credentials
                   key: uri
+            - name: PAYPAL_WEBHOOK_ID
+              valueFrom:
+                secretKeyRef:
+                  name: paypal-secrets
+                  key: paypal-webhook-id
 ---
 apiVersion: v1
 kind: Service

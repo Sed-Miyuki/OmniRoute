@@ -5,7 +5,7 @@ import { Button } from "./ui/button"
 import { convertMetersToKilometers, convertSecondsToMinutes } from "../utils/math"
 import { Skeleton } from "./ui/skeleton"
 import { TripOverviewCard } from "./TripOverviewCard"
-import { StripePaymentButton } from "./StripePaymentButton"
+import { PayPalPaymentButton } from "./PayPalPaymentButton"
 import { DriverCard } from "./DriverCard"
 import { TripEvents, PaymentEventSessionCreatedData } from "../contracts"
 
@@ -48,7 +48,7 @@ export const RiderTripOverview = ({
             <p>Amount: {paymentSession.amount} {paymentSession.currency}</p>
             <p>Trip ID: {paymentSession.tripID}</p>
           </div>
-          <StripePaymentButton paymentSession={paymentSession} />
+          <PayPalPaymentButton paymentSession={paymentSession} />
         </div>
       </TripOverviewCard>
     )

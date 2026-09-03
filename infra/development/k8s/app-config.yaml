@@ -5,3 +5,5 @@ metadata:
 data:
   ENVIRONMENT: "development"
   GATEWAY_HTTP_ADDR: ":8081"
+  PAYPAL_RETURN_URL: "http://localhost:3000?payment=success"
+  PAYPAL_CANCEL_URL: "http://localhost:3000?payment=cancel"
