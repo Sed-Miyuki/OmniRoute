@@ -19,6 +19,7 @@ import (
 	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/service"
 	"github.com/Sed-Miyuki/OmniRoute/shared/env"
 	"github.com/Sed-Miyuki/OmniRoute/shared/messaging"
+	"github.com/Sed-Miyuki/OmniRoute/shared/tracing"
 
 	grpcserver "google.golang.org/grpc"
 )
@@ -26,12 +27,26 @@ import (
 var GrpcAddr = ":9093"
 
 func main() {
-	rabbitMqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
-	inmemRepo := repository.NewInmemRepository()
-	svc := service.NewService(inmemRepo)
+
+	//initialize tracing
+	tracerCfg := tracing.Config{
+		ServiceName:    "trip-service",
+		Environment:    env.GetString("ENVIRONMENT", "development"),
+		JeagerEndpoint: env.GetString("JAEGER_ENDPOINT", "http://jaeger:14268/api/traces"),
+	}
+
+	sh, err := tracing.InitTracer(tracerCfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize the tracer: %v", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	defer sh(ctx)
+
+	rabbitMqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
+	inmemRepo := repository.NewInmemRepository()
+	svc := service.NewService(inmemRepo)
 
 	go func() {
 		sigCh := make(chan os.Signal, 1)
@@ -56,14 +71,14 @@ func main() {
 
 	publisher := events.NewTripEventPublisher(rabbitmq)
 
-	driverConsumer:=events.NewDriverConsumer(rabbitmq,svc)
+	driverConsumer := events.NewDriverConsumer(rabbitmq, svc)
 	go driverConsumer.Listen()
 
 	paymentConsumer := events.NewPaymentConsumer(rabbitmq, svc)
 	go paymentConsumer.Listen()
 
 	//starting the gRPC server
-	grpcServer := grpcserver.NewServer()
+	grpcServer := grpcserver.NewServer(tracing.WithTracingInterceptors()...)
 
 	grpc.NewGRPCHandler(grpcServer, svc, publisher)
 
