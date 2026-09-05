@@ -7,26 +7,26 @@ import (
 )
 
 type RideFareModel struct {
-	ID                primitive.ObjectID
-	UserID            string
-	PackageSlug       string // ex: van, luxury, sedan
-	TotalPriceInCents float64
-	Route 			  *tripTypes.OsrmApiResponse
+	ID                primitive.ObjectID         `bson:"_id,omitempty"`
+	UserID            string                     `bson:"userID"`
+	PackageSlug       string                     `bson:"packagesSlug"` // ex: van, luxury, sedan
+	TotalPriceInCents float64                    `bson:"totalPriceInCents"`
+	Route             *tripTypes.OsrmApiResponse `bson:"route"`
 }
 
-func (r *RideFareModel) ToProto() *pb.RideFare{
+func (r *RideFareModel) ToProto() *pb.RideFare {
 	return &pb.RideFare{
-		Id: r.ID.Hex(),
-		UserID: r.UserID,
-		PackageSlug: r.PackageSlug,
+		Id:                r.ID.Hex(),
+		UserID:            r.UserID,
+		PackageSlug:       r.PackageSlug,
 		TotalPriceInCents: r.TotalPriceInCents,
 	}
 }
 
-func ToRideFaresProto(fares []*RideFareModel) []*pb.RideFare{
+func ToRideFaresProto(fares []*RideFareModel) []*pb.RideFare {
 	var protoFares []*pb.RideFare
-	for _,f:=range fares{
-		protoFares=append(protoFares, f.ToProto())
+	for _, f := range fares {
+		protoFares = append(protoFares, f.ToProto())
 	}
 	return protoFares
 }

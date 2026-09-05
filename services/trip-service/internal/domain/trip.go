@@ -4,18 +4,18 @@ import (
 	"context"
 
 	tripTypes "github.com/Sed-Miyuki/OmniRoute/services/trip-service/pkg/types"
-	pb "github.com/Sed-Miyuki/OmniRoute/shared/proto/trip"
 	pbd "github.com/Sed-Miyuki/OmniRoute/shared/proto/driver"
+	pb "github.com/Sed-Miyuki/OmniRoute/shared/proto/trip"
 	"github.com/Sed-Miyuki/OmniRoute/shared/types"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
- 
+
 type TripModel struct {
-	ID       primitive.ObjectID
-	UserID   string
-	Status   string
-	RideFare *RideFareModel
-	Driver   *pb.TripDriver
+	ID       primitive.ObjectID `bson:"_id,omitempty"`
+	UserID   string             `bson:"userID"`
+	Status   string             `bson:"status"`
+	RideFare *RideFareModel     `bson:"rideFare"`
+	Driver   *pb.TripDriver     `baon:"driver"`
 }
 
 func (t *TripModel) ToProto() *pb.Trip {

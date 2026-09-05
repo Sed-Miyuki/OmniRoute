@@ -17,6 +17,7 @@ import (
 	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/grpc"
 	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/infrastructure/repository"
 	"github.com/Sed-Miyuki/OmniRoute/services/trip-service/internal/service"
+	"github.com/Sed-Miyuki/OmniRoute/shared/db"
 	"github.com/Sed-Miyuki/OmniRoute/shared/env"
 	"github.com/Sed-Miyuki/OmniRoute/shared/messaging"
 	"github.com/Sed-Miyuki/OmniRoute/shared/tracing"
@@ -44,9 +45,17 @@ func main() {
 	defer cancel()
 	defer sh(ctx)
 
+	mongoClient,err:=db.NewMongoClient(ctx,db.NewMongoDefaultConfig())
+	if err!=nil{
+		log.Fatalf("failed to initialize MongoDB, err: %v",err)
+	}
+
+	defer mongoClient.Disconnect(ctx)
+	mongoDb := db.GetDatabase(mongoClient, db.NewMongoDefaultConfig())
+
 	rabbitMqURI := env.GetString("RABBITMQ_URI", "amqp://guest:guest@rabbitmq:5672/")
-	inmemRepo := repository.NewInmemRepository()
-	svc := service.NewService(inmemRepo)
+	mongoDBRepo:=repository.NewMongoRepository(mongoDb)
+	svc := service.NewService(mongoDBRepo)
 
 	go func() {
 		sigCh := make(chan os.Signal, 1)
